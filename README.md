@@ -6,6 +6,8 @@
 
 An open-source, AI-driven penetration testing framework. Fennec runs a multi-agent loop — recon, hypothesis generation, exploit testing — against a target you control, and produces a structured report of findings.
 
+**🌐 Hosted version:** [fenneclabs.ai](https://fenneclabs.ai) — managed runner, team features, persistent jobs. Join the waitlist there if you'd rather not self-host.
+
 > **Authorized testing only.** Fennec is built to assist security testing against systems you own or have explicit written permission to assess. Don't point it at anything else.
 
 ## What you get
@@ -15,7 +17,7 @@ An open-source, AI-driven penetration testing framework. Fennec runs a multi-age
 - **Provider-agnostic LLMs**: Anthropic, OpenAI, or OpenRouter. Pick one in `.env`.
 - **CLI + Dashboard**: a Python CLI for one-shot runs, and an optional React dashboard for live progress + findings.
 
-There's a hosted SaaS version of Fennec with team features, persistent jobs, and a managed runner. This open-source repo is the same agent core, stripped of the multi-tenant infrastructure — designed to run on one laptop with one API key.
+There's a [hosted version of Fennec at fenneclabs.ai](https://fenneclabs.ai) with team features, persistent jobs, and a managed runner. This open-source repo is the same agent core, stripped of the multi-tenant infrastructure — designed to run on one laptop with one API key.
 
 ## Requirements
 
