@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Confirmed — FennecLabs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050505;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      margin-bottom: 2.5rem;
+    }
+
+    /* Animated checkmark */
+    .icon-wrap {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.75rem;
+      animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    @keyframes pop {
+      from { transform: scale(0.6); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+
+    .icon-wrap svg {
+      width: 36px;
+      height: 36px;
+      stroke: #c8f230;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .check-path {
+      stroke-dasharray: 40;
+      stroke-dashoffset: 40;
+      animation: draw 0.5s 0.3s ease forwards;
+    }
+
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #c8f230;
+      background: rgba(200, 242, 48, 0.08);
+      border: 1px solid rgba(200, 242, 48, 0.2);
+      border-radius: 999px;
+      padding: 0.25rem 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 1.875rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    p {
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 2rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.75rem 1.25rem;
+      border-radius: 0.6rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      border: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn-primary {
+      background: #fff;
+      color: #000;
+    }
+
+    .btn-primary:hover { background: #e5e5e5; }
+
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+      margin: 1.75rem 0;
+    }
+
+    .footer-note {
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.25);
+    }
+
+    /* Error state */
+    .icon-wrap.error { border-color: rgba(239,68,68,0.3); }
+    .icon-wrap.error svg { stroke: #f87171; }
+    .tag.error { color: #f87171; background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); }
+
+    .fade-in {
+      animation: fadein 0.5s 0.1s ease both;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card fade-in">
+    <div class="logo">FennecLabs</div>
+
+    <!-- Success state (shown by default, error state toggled by JS) -->
+    <div id="icon" class="icon-wrap">
+      <svg viewBox="0 0 24 24">
+        <path class="check-path" d="M5 13l4 4L19 7" />
+      </svg>
+    </div>
+
+    <div id="tag" class="tag">Email confirmed</div>
+
+    <h1 id="heading">You're all set!</h1>
+
+    <p id="body">
+      Your email address has been verified. You can now sign in to your
+      FennecLabs account and start securing your applications.
+    </p>
+
+    <a id="cta" class="btn btn-primary" href="/login">
+      Sign in to your account
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </a>
+
+    <div class="divider"></div>
+
+    <p class="footer-note" id="footer">
+      Didn't request this? You can safely ignore this page.
+    </p>
+  </div>
+
+  <script>
+    (function () {
+      // Parse hash params from URL
+      // e.g. #access_token=...&type=signup&error=...
+      var hash = window.location.hash.slice(1);
+      var params = {};
+      hash.split('&').forEach(function (part) {
+        var kv = part.split('=');
+        if (kv.length === 2) {
+          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+        }
+      });
+
+      var hasError = params['error'] || params['error_description'];
+      var type = params['type']; // 'signup', 'recovery', etc.
+
+      if (hasError) {
+        // Switch to error state
+        var icon = document.getElementById('icon');
+        icon.classList.add('error');
+        icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+        var tag = document.getElementById('tag');
+        tag.classList.add('error');
+        tag.textContent = 'Verification failed';
+
+        document.getElementById('heading').textContent = 'Link expired or invalid';
+        document.getElementById('body').textContent =
+          params['error_description']
+            ? decodeURIComponent(params['error_description']).replace(/\+/g, ' ')
+            : 'This confirmation link may have expired. Please try signing up again or request a new confirmation email.';
+
+        var cta = document.getElementById('cta');
+        cta.textContent = 'Back to sign up';
+        cta.href = '/signup';
+
+        document.getElementById('footer').textContent = 'Need help? Contact support.';
+        return;
+      }
+
+      // Adjust copy for non-signup flows (e.g. password recovery)
+      if (type === 'recovery') {
+        document.getElementById('tag').textContent = 'Link verified';
+        document.getElementById('heading').textContent = 'Identity verified';
+        document.getElementById('body').textContent =
+          'Your identity has been confirmed. You can now sign in and reset your password from your account settings.';
+      }
+    })();
+  </script>
+</body>
+</html>

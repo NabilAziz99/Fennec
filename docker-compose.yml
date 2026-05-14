@@ -1,0 +1,52 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fennec-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      # LLM Configuration
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - LLM_MODEL=${LLM_MODEL:-claude-sonnet-4-20250514}
+      # API Keys
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      # Search API Keys (optional)
+      - FENNEC_TAVILY_API_KEY=${TAVILY_API_KEY}
+      - FENNEC_PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      # Docker Configuration
+      - FENNEC_DOCKER_IMAGE=${DOCKER_IMAGE:-fennec-linux}
+    volumes:
+      # Mount Docker socket for spawning pentest containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fennec-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fennec-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - fennec-network
+
+networks:
+  fennec-network:
+    driver: bridge

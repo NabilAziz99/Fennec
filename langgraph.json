@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "fennec": "src.graph.role_based_graph:compile_role_based_graph"
+  },
+  "env": ".env"
+}

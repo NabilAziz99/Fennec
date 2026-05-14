@@ -1,0 +1,60 @@
+{
+  "target_url": "https://fennec-tester-429281326783.us-west1.run.app/",
+  "ip_address": "127.0.0.1",
+  "ports_open": [443],
+  "canonical_access": {
+    "scheme": "https",
+    "host": "fennec-tester-429281326783.us-west1.run.app",
+    "port": 443,
+    "base_path": "/",
+    "host_header": null,
+    "justification": "Direct HTTPS access on Cloud Run",
+    "evidence_ref": null
+  },
+  "technologies": [
+    {"name": "Apache", "version": "2.4.49", "type": "server", "confidence": 0.95},
+    {"name": "PHP", "version": "7.4", "type": "language", "confidence": 0.8},
+    {"name": "Linux", "version": null, "type": "other", "confidence": 0.9}
+  ],
+  "components": [],
+  "endpoints": [
+    {"path": "/", "method": "GET", "parameters": [], "status_code": 200, "content_type": "text/html", "redirect_to": null, "title": "Home", "discovered_by": "manual", "params": null, "auth_scheme": null, "auth_required": false, "response_type": "html", "notes": "Main landing page"},
+    {"path": "/cgi-bin/", "method": "GET", "parameters": [], "status_code": 403, "content_type": "text/html", "redirect_to": null, "title": null, "discovered_by": "gobuster", "params": null, "auth_scheme": null, "auth_required": false, "response_type": "html", "notes": "CGI directory — forbidden but exists"},
+    {"path": "/icons/", "method": "GET", "parameters": [], "status_code": 200, "content_type": "text/html", "redirect_to": null, "title": "Index of /icons", "discovered_by": "gobuster", "params": null, "auth_scheme": null, "auth_required": false, "response_type": "html", "notes": "Directory listing enabled"}
+  ],
+  "entry_points": [
+    {"location": "/cgi-bin/", "type": "api", "input_type": "path", "validation_observed": "403 Forbidden", "notes": "CGI scripts may be executable if specific filenames are guessed"},
+    {"location": "/", "type": "form", "input_type": "text", "validation_observed": "", "notes": "Check for path traversal via URL manipulation"}
+  ],
+  "auth_type": null,
+  "login_endpoint": null,
+  "registration_available": false,
+  "default_credentials_found": [],
+  "headers_of_interest": {
+    "Server": "Apache/2.4.49 (Unix)"
+  },
+  "cookies_observed": [],
+  "vulnerability_candidates": [
+    {
+      "cve_id": "CVE-2021-41773",
+      "title": "Apache 2.4.49 Path Traversal",
+      "component": "Apache HTTP Server",
+      "detected_version": "2.4.49",
+      "affected_range": "2.4.49",
+      "preconditions": "mod_cgi or mod_cgid enabled, directory accessible",
+      "exploit_paths": ["/cgi-bin/.%2e/%2e%2e/%2e%2e/etc/passwd"],
+      "confidence": 0.9,
+      "evidence_refs": ["Server header: Apache/2.4.49 (Unix)"]
+    }
+  ],
+  "evidence_items": [],
+  "summary": "Apache 2.4.49 web server on port 9000. Directory listing enabled on /icons/. CGI directory exists but returns 403. Server header confirms version 2.4.49 which is vulnerable to CVE-2021-41773 path traversal.",
+  "priority_targets": ["/cgi-bin/", "/"],
+  "key_findings": [
+    "Apache 2.4.49 detected — known CVE-2021-41773 path traversal",
+    "CGI directory exists (403 Forbidden)",
+    "Directory listing enabled on /icons/"
+  ],
+  "recon_started": "2025-01-01T00:00:00",
+  "recon_completed": "2025-01-01T00:05:00"
+}

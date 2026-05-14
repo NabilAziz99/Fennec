@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv
+.venv
+env
+*.egg-info
+.eggs
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env
+
+# Frontend (built separately)
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

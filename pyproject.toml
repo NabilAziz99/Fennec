@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fennec"
+version = "0.1.0"
+description = "Open-source, AI-driven penetration testing framework"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-anthropic>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "httpx>=0.28.0",
+    "aiodocker>=0.23.0",
+    "duckduckgo-search>=7.0.0",
+    "tavily-python>=0.5.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+norecursedirs = ["src", "cli", "frontend", "linux", ".langgraph_api"]
+
+[tool.setuptools.package-dir]
+fennec = "."
+
+[tool.setuptools.packages.find]
+where = ["."]
