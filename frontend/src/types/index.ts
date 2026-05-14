@@ -240,6 +240,7 @@ export interface JobResponse {
   scheduled_at: string | null;
   created_at: string;
   updated_at: string | null;
+  error?: string | null;
 }
 
 export interface StartTestResponse {

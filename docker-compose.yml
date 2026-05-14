@@ -24,6 +24,13 @@ services:
     volumes:
       # Mount Docker socket for spawning pentest containers
       - /var/run/docker.sock:/var/run/docker.sock
+    # Resolve host.docker.internal to the host machine. Docker Desktop adds
+    # this automatically, but Linux Docker Engine requires the explicit
+    # extra_hosts entry below. Needed so the agent can target services
+    # running on the host (e.g. http://localhost:8080) from inside its
+    # spawned Kali sibling container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - fennec-network
     healthcheck:

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Any
+from typing import Awaitable, Callable, Optional, Any
 
 # Add project to path
 project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -135,11 +135,43 @@ class AgentResult:
         }
 
 
+def _running_inside_container() -> bool:
+    """Heuristic check: are we executing inside a Docker container?
+
+    `/.dockerenv` is created by Docker for every container. The cgroup file
+    contains "docker" or "containerd" inside containers run by typical
+    container runtimes. Either signal is sufficient.
+    """
+    if os.path.exists("/.dockerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", "r") as fh:
+            data = fh.read()
+        return "docker" in data or "containerd" in data or "kubepods" in data
+    except OSError:
+        return False
+
+
 def convert_localhost_for_docker(url: str) -> str:
-    """Convert localhost URLs to host.docker.internal for Docker containers."""
+    """Convert localhost URLs to host.docker.internal for Docker containers.
+
+    Fires on:
+    - macOS / Windows hosts (Docker Desktop handles host.docker.internal)
+    - Linux when the agent itself is running inside a container (e.g.
+      `docker compose up`) — needs the `host.docker.internal:host-gateway`
+      extra_hosts entry on the agent's compose service to resolve.
+
+    On a bare Linux host running the agent directly, `localhost` already
+    works from the spawned Kali sibling container via the default bridge,
+    so we leave the URL unchanged there.
+    """
     import platform
 
-    if platform.system() in ("Darwin", "Windows"):
+    needs_rewrite = (
+        platform.system() in ("Darwin", "Windows")
+        or _running_inside_container()
+    )
+    if needs_rewrite:
         url = re.sub(r'(https?://)localhost(:\d+)?', r'\1host.docker.internal\2', url)
         url = re.sub(r'(https?://)127\.0\.0\.1(:\d+)?', r'\1host.docker.internal\2', url)
 
@@ -191,6 +223,8 @@ async def run_pentest(
     verbose: bool = False,
     graph_name: str = "main",
     htli: bool = False,
+    event_sink: Optional[Callable[[str, dict], Awaitable[None]]] = None,
+    await_review: Optional[Callable[[dict], Awaitable[dict]]] = None,
 ) -> AgentResult:
     """
     Run Fennec AI agent against a target.
@@ -200,10 +234,25 @@ async def run_pentest(
         verbose: Whether to print progress to stdout
         graph_name: Role-based graph name to compile (default: "main")
         htli: Human-In-The-Loop mode — pause for confirmation before tool calls
+        event_sink: Optional async callback that receives (event_type, data)
+            tuples as the agent loop progresses. The API server uses this to
+            publish SSE events to dashboard subscribers.
+        await_review: Optional async callback invoked when the graph emits an
+            HTLI interrupt. It receives the interrupt payload and must return
+            the operator's user_edits dict. Falls back to stdin prompt when
+            not provided (the CLI path).
 
     Returns:
         AgentResult with findings
     """
+    async def _emit(event_type: str, data: dict) -> None:
+        """Safe event publish — never lets a bad sink kill the agent."""
+        if event_sink is None:
+            return
+        try:
+            await event_sink(event_type, data)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("event_sink raised on %s: %s", event_type, exc)
     # Resolve htli from env if not explicitly set
     if not htli:
         htli = os.getenv("HTLI", "").strip().lower() in ("1", "true", "yes", "on")
@@ -266,15 +315,31 @@ async def run_pentest(
             logger.info(f"  Pentester LLM: {config.pentester_llm_model}")
 
         container_id = None
-        if docker_client:
-            container_config = ContainerConfig(
-                image=config.docker_image,
-                name=f"fennec-bench-{session_id[:8]}",
-            )
-            container_id = await docker_client.spawn_container(container_config)
-            logger.info(f"Container created: {container_id[:12]}")
-
         try:
+            # Spawn the Kali sibling container. We do this *inside* the
+            # try/finally that owns cleanup, so cancellation between spawn
+            # and the graph loop can never leak a container.
+            if docker_client:
+                # Pre-flight: verify the image exists locally before we try to
+                # spawn. Otherwise aiodocker emits a generic 404 buried in a
+                # JSON blob and users don't realise they forgot to build it.
+                try:
+                    await docker_client._client.images.inspect(config.docker_image)
+                except Exception:
+                    raise RuntimeError(
+                        f"Docker image '{config.docker_image}' not found locally. "
+                        f"Build it first:\n"
+                        f"    cd linux && make build\n"
+                        f"Or override with DOCKER_IMAGE=<some-image> in .env "
+                        f"(e.g. DOCKER_IMAGE=kalilinux/kali-rolling:latest)."
+                    )
+                container_config = ContainerConfig(
+                    image=config.docker_image,
+                    name=f"fennec-bench-{session_id[:8]}",
+                )
+                container_id = await docker_client.spawn_container(container_config)
+                logger.info(f"Container created: {container_id[:12]}")
+
             # Create session context
             container_info = None
             if container_id:
@@ -397,8 +462,17 @@ async def run_pentest(
                                 interrupt_value = first.value if hasattr(first, 'value') else first
                             interrupt_data = interrupt_value if isinstance(interrupt_value, dict) else {}
 
-                            # Get user decision via local stdin prompt
-                            user_edits = await _get_review_decision(interrupt_data)
+                            # Surface the interrupt to subscribers (dashboard
+                            # uses this to flip its UI into "awaiting review").
+                            await _emit("hypothesis_review", interrupt_data)
+
+                            # Prefer the API hook when present, fall back to
+                            # the CLI stdin prompt for direct `python cli.py`
+                            # invocations.
+                            if await_review is not None:
+                                user_edits = await await_review(interrupt_data)
+                            else:
+                                user_edits = await _get_review_decision(interrupt_data)
 
                             graph_input = Command(resume=user_edits)
                             interrupted = True
@@ -407,9 +481,30 @@ async def run_pentest(
                         if node_output is None:
                             continue
                         # Track agent transitions
+                        prev_agent = current_agent
                         if isinstance(node_output, dict) and node_output.get("next_agent"):
                             next_agent = node_output["next_agent"]
                             current_agent = next_agent.value if hasattr(next_agent, 'value') else str(next_agent)
+                        if node_name and (prev_agent != current_agent or node_name != prev_agent):
+                            await _emit("node_update", {"node": node_name, "agent": current_agent})
+
+                        # Stream rich state changes for the dashboard. We emit
+                        # the whole serialized blob on each update — these are
+                        # snapshots, not deltas, so dropped events recover on
+                        # the next one.
+                        if isinstance(node_output, dict):
+                            if node_output.get("recon_data") is not None:
+                                await _emit("recon_update", {"recon_data": node_output["recon_data"]})
+                            if node_output.get("hypothesis_manager") is not None:
+                                await _emit("hypothesis_tree", {"hypothesis_manager": node_output["hypothesis_manager"]})
+                            if node_output.get("current_hypothesis_id"):
+                                await _emit("current_hypothesis", {"hypothesis_id": node_output["current_hypothesis_id"]})
+                            if node_output.get("correlation_store") is not None:
+                                await _emit("findings_update", {"correlation_store": node_output["correlation_store"]})
+                            if node_output.get("final_result"):
+                                await _emit("result", {"final_result": str(node_output["final_result"])})
+                            if node_output.get("pending_agent_result"):
+                                await _emit("agent_result", node_output["pending_agent_result"])
 
                         # Process messages
                         if not isinstance(node_output, dict):
@@ -433,6 +528,12 @@ async def run_pentest(
                                         "agent": current_agent,
                                         "type": "agent_message",
                                         "message": content,  # Full content
+                                    })
+                                    await _emit("message", {
+                                        "type": "AIMessage",
+                                        "agent": current_agent,
+                                        "content": content,
+                                        "timestamp": timestamp,
                                     })
 
                                     if verbose:
@@ -462,6 +563,13 @@ async def run_pentest(
                                             "tool_id": tool_id,
                                             "args": tool_args,
                                         })
+                                        await _emit("tool_call", {
+                                            "tool_name": tool_name,
+                                            "tool_id": tool_id,
+                                            "args": tool_args,
+                                            "agent": current_agent,
+                                            "timestamp": timestamp,
+                                        })
 
                                         # Track exploits used
                                         exploit_tools = ["terminal", "sqlmap", "nmap", "gobuster"]
@@ -490,6 +598,7 @@ async def run_pentest(
                                     evidence_outputs.append(tool_content)
 
                                 # Log tool result with full output
+                                tool_status = getattr(msg, "status", "success")
                                 execution_log.append({
                                     "timestamp": timestamp,
                                     "node": node_name,
@@ -498,7 +607,15 @@ async def run_pentest(
                                     "tool_name": tool_name,
                                     "tool_id": tool_id,
                                     "output": tool_content,  # Full output
-                                    "status": getattr(msg, "status", "success"),
+                                    "status": tool_status,
+                                })
+                                await _emit("tool_execution", {
+                                    "tool_name": tool_name,
+                                    "tool_id": tool_id,
+                                    "agent": tool_info.get("agent", current_agent),
+                                    "result": tool_content,
+                                    "success": tool_status == "success",
+                                    "timestamp": timestamp,
                                 })
 
                                 if verbose:

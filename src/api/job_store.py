@@ -54,6 +54,11 @@ class Job:
     # Bookkeeping for background task and SSE subscribers
     task: Optional[asyncio.Task] = field(default=None, repr=False)
     subscribers: list[asyncio.Queue] = field(default_factory=list, repr=False)
+    # Per-job review queue: HTLI flow puts a single user_edits dict here when
+    # the operator submits a review via /jobs/{id}/reviews/submit. The agent
+    # loop's await_review hook pops from it to resume the interrupted graph.
+    review_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=1), repr=False)
+    pending_review: Optional[dict] = field(default=None, repr=False)
 
     def to_response(self) -> dict:
         """JobResponse shape expected by frontend types."""
@@ -74,6 +79,7 @@ class Job:
             "scheduled_at": self.scheduled_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "error": self.error,
         }
 
     def to_session_response(self) -> dict:

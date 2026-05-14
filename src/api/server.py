@@ -64,9 +64,23 @@ from .job_store import (
 logger = logging.getLogger("fennec.api")
 app = FastAPI(title="Fennec OSS API", version="0.1.0")
 
+# Default to localhost-only CORS — the OSS server is designed for single-user
+# local use. If you're proxying through a different origin (e.g. running the
+# dashboard on a custom hostname), set FENNEC_CORS_ORIGINS to a comma-
+# separated list. Use "*" only if you know why you're doing it.
+_default_cors = ",".join([
+    "http://localhost:3000",
+    "http://localhost:4173",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:4173",
+    "http://127.0.0.1:5173",
+])
+_cors_origins = [o.strip() for o in os.getenv("FENNEC_CORS_ORIGINS", _default_cors).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -152,6 +166,57 @@ async def _run_job(job: Job) -> None:
                 "auth_type": cred.auth_type,
             })
 
+    # Bridge agent loop events into the per-job SSE stream. Each agent event
+    # is fanned out to every subscriber connected to /jobs/{id}/stream. We
+    # also mirror the data into the job's in-memory state so the REST GET
+    # endpoints (/hypotheses, /recon_result, /pentester_results, /tool_calls)
+    # return live values mid-scan, not just the final snapshot.
+    async def _event_sink(event_type: str, data: dict) -> None:
+        try:
+            if event_type == "recon_update" and isinstance(data.get("recon_data"), dict):
+                rd = data["recon_data"]
+                rd.setdefault("session_id", job.id)
+                rd.setdefault("target_url", job.target_url)
+                job.recon_result = rd
+            elif event_type == "hypothesis_tree" and isinstance(data.get("hypothesis_manager"), dict):
+                tree = (data["hypothesis_manager"].get("tree") or {})
+                job.hypotheses = [h for h in tree.values() if isinstance(h, dict)]
+            elif event_type == "tool_call":
+                job.tool_calls.append({
+                    "id": data.get("tool_id") or str(len(job.tool_calls)),
+                    "session_id": job.id,
+                    "tool_name": data.get("tool_name", ""),
+                    "tool_input": data.get("args", {}),
+                    "agent": data.get("agent", ""),
+                    "success": True,
+                    "result": "",
+                    "error": "",
+                    "timestamp": data.get("timestamp", ""),
+                })
+            elif event_type == "tool_execution":
+                # Patch the matching tool_call entry with the result.
+                tid = data.get("tool_id")
+                for entry in reversed(job.tool_calls):
+                    if entry.get("id") == tid:
+                        entry["result"] = data.get("result", "")
+                        entry["success"] = bool(data.get("success", True))
+                        break
+            elif event_type == "hypothesis_review":
+                job.pending_review = data
+                job.mark("awaiting_review")
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("event_sink mirror failed for %s", event_type)
+        await publish(job, event_type, data)
+
+    async def _await_review(interrupt_data: dict) -> dict:
+        """Block the agent loop until the dashboard submits a review."""
+        job.pending_review = interrupt_data
+        job.mark("awaiting_review")
+        edits = await job.review_queue.get()
+        job.pending_review = None
+        job.mark("running")
+        return edits
+
     try:
         task = PentestTask(
             target_url=job.target_url,
@@ -159,7 +224,12 @@ async def _run_job(job: Job) -> None:
             mode=PentestMode(job.mode),
             timeout=job.timeout_seconds,
         )
-        result = await run_pentest(task, htli=job.htli)
+        result = await run_pentest(
+            task,
+            htli=job.htli,
+            event_sink=_event_sink,
+            await_review=_await_review if job.htli else None,
+        )
     except asyncio.CancelledError:
         job.mark("cancelled")
         await publish(job, "error", {"message": "Scan cancelled"})
@@ -438,13 +508,13 @@ async def pending_review(job_id: str) -> dict:
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != "awaiting_review":
+    if job.status != "awaiting_review" or not job.pending_review:
         raise HTTPException(status_code=404, detail="No pending review")
     return {
         "id": 0,
         "job_id": job.id,
         "status": "pending",
-        "hypotheses_snapshot": job.hypotheses,
+        "hypotheses_snapshot": job.pending_review.get("hypotheses", job.hypotheses),
         "user_edits": None,
         "timeout_seconds": 600,
         "review_cycle": 1,
@@ -459,23 +529,37 @@ async def submit_review(job_id: str, req: ReviewSubmitRequest) -> dict:
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    # OSS HTLI: surface review edits via SSE; the LangGraph interrupt() is
-    # consumed by the running task. Full HTLI wiring through the FastAPI
-    # surface is a follow-up — for now this endpoint records the edits in
-    # the publish stream and resumes the job by clearing the awaiting flag.
-    await publish(job, "review_submitted", {
+    if job.status != "awaiting_review":
+        # Surface the submission anyway (so non-HTLI consumers can record
+        # intent), but flag that the running graph won't see it.
+        await publish(job, "review_submitted", {
+            "edits": req.edits,
+            "new_hypotheses": req.new_hypotheses,
+            "guidance_notes": req.guidance_notes,
+            "ignored": True,
+        })
+        raise HTTPException(status_code=409, detail="Job is not awaiting review")
+
+    user_edits = {
         "edits": req.edits,
         "new_hypotheses": req.new_hypotheses,
         "guidance_notes": req.guidance_notes,
-    })
-    if job.status == "awaiting_review":
-        job.mark("running")
+    }
+    # Hand the decision to the agent loop via the per-job review queue.
+    # _await_review (in _run_job) is blocked on this queue.
+    try:
+        job.review_queue.put_nowait(user_edits)
+    except asyncio.QueueFull:
+        raise HTTPException(status_code=409, detail="A review was already submitted for this interrupt")
+
+    await publish(job, "review_submitted", user_edits)
+
     return {
         "id": 0,
         "job_id": job.id,
         "status": "approved",
         "hypotheses_snapshot": job.hypotheses,
-        "user_edits": req.model_dump(),
+        "user_edits": user_edits,
         "timeout_seconds": 600,
         "review_cycle": 1,
         "created_at": job.created_at,
