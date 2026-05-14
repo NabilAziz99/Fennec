@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="cli/art/fennec.png" alt="Fennec — Red Team Fennec" width="600">
+</p>
+
 # Fennec
 
 An open-source, AI-driven penetration testing framework. Fennec runs a multi-agent loop — recon, hypothesis generation, exploit testing — against a target you control, and produces a structured report of findings.
