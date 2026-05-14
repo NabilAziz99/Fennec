@@ -65,25 +65,28 @@ logger = logging.getLogger("fennec.api")
 app = FastAPI(title="Fennec OSS API", version="0.1.0")
 
 # Default to localhost-only CORS — the OSS server is designed for single-user
-# local use. If you're proxying through a different origin (e.g. running the
-# dashboard on a custom hostname), set FENNEC_CORS_ORIGINS to a comma-
-# separated list. Use "*" only if you know why you're doing it.
-_default_cors = ",".join([
-    "http://localhost:3000",
-    "http://localhost:4173",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:4173",
-    "http://127.0.0.1:5173",
-])
-_cors_origins = [o.strip() for o in os.getenv("FENNEC_CORS_ORIGINS", _default_cors).split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# local use. The regex matches http(s)://localhost or 127.0.0.1 on any port,
+# so vite/preview/nginx-via-compose all work without manual port pinning.
+# Override with an explicit allowlist via FENNEC_CORS_ORIGINS=a,b,c when
+# proxying through a different origin. Use "*" only if you know why.
+_default_localhost_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+_explicit_origins = [o.strip() for o in os.getenv("FENNEC_CORS_ORIGINS", "").split(",") if o.strip()]
+if _explicit_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_explicit_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=_default_localhost_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # ---------------------------------------------------------------------------

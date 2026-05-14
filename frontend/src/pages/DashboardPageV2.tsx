@@ -57,7 +57,7 @@ export default function DashboardPage() {
                 {/* Welcome header */}
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-semibold text-white">
-                        Welcome back, Aziz Taleb
+                        Security Overview
                     </h1>
                 </div>
 
