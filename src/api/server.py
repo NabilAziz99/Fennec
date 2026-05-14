@@ -171,6 +171,15 @@ async def _run_job(job: Job) -> None:
         await publish(job, "error", {"message": str(exc)})
         return
 
+    # run_pentest swallows its own exceptions and reports them via result.error.
+    # Treat a non-empty error as a failure, regardless of whether the agent
+    # also produced partial findings.
+    if result.error:
+        job.error = result.error
+        job.mark("failed")
+        await publish(job, "error", {"message": result.error})
+        return
+
     # Populate the job with whatever the agent produced.
     job.success = result.success
     job.final_result = result.final_summary

@@ -231,6 +231,11 @@ async def run_pentest(
     # Initialize result
     result = AgentResult(success=False)
     execution_log: list[dict] = []
+    # Initialize here (not deeper) so the post-run finalization can read it
+    # even if setup fails before the streaming loop starts (e.g. Docker not
+    # running). Without this, an early-setup exception leaves the variable
+    # unbound and the post-run finalization raises UnboundLocalError.
+    _latest_hypothesis_manager: Optional[dict] = None
 
     # Get config
     config = get_config()
@@ -363,11 +368,10 @@ async def run_pentest(
             all_content = []
             evidence_outputs: list[str] = []
             pending_tool_calls = {}  # Track tool calls waiting for results
-            # Most recent snapshot of the hypothesis_manager state seen in any
-            # node_output during streaming; used post-run to populate
-            # AgentResult.vulnerabilities / success from the final hypothesis
-            # tree (VULNERABLE hypotheses are the findings of the run).
-            _latest_hypothesis_manager: Optional[dict] = None
+            # _latest_hypothesis_manager is initialised at function scope so
+            # the post-run finalization can read it even when setup fails
+            # before this point. The inner-loop assignment below updates it
+            # as the hypothesis_manager state changes during streaming.
 
             graph_input: Any = initial_state  # first run uses initial_state
 
