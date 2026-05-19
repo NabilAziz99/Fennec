@@ -9,7 +9,7 @@ import sys
 import time
 import random
 import os
-from typing import List, Tuple
+from typing import Tuple
 
 # ANSI Color codes - Orange/Black fennec aesthetic
 class HACKER:
