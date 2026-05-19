@@ -43,11 +43,19 @@ services:
   frontend:
     build:
       context: ./frontend
+      # The dashboard's bundle bakes VITE_API_BASE_URL at build time. For
+      # `docker compose up` we want it to talk to the sibling backend
+      # container via the host port (http://localhost:8000), not the
+      # production Cloud Run URL the Dockerfile defaults to.
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
       dockerfile: Dockerfile
     container_name: fennec-frontend
     restart: unless-stopped
+    # Internal port matches the nginx `listen` ($PORT, default 8080 inside
+    # the container — see frontend/Dockerfile). External port 3000.
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       backend:
         condition: service_healthy
