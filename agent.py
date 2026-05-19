@@ -49,10 +49,8 @@ from langgraph.types import Command
 
 from src.config.settings import get_config
 from src.state.graph_state import (
-    FennecState,
     SessionContext,
     ContainerInfo,
-    AgentType,
     create_initial_state,
 )
 from src.docker.client import DockerClient, ContainerConfig
