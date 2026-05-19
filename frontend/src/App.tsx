@@ -5,7 +5,6 @@ import AssessmentDetailPage from "./pages/AssessmentDetailPage";
 import StatusPage from "./pages/StatusPage";
 import FindingsPage from "./pages/FindingsPage";
 import TargetInventoryPage from "./pages/TargetInventoryPage";
-import PlaceholderPage from "./pages/PlaceholderPage";
 import PrivateLayout from "@/layouts/PrivateLayout";
 import { PentestProvider } from "@/contexts/PentestContext";
 import type { RawEventCallback } from "@/hooks/usePentestStream";
@@ -64,7 +63,6 @@ function App() {
                     <Route path="status/:testId" element={<AssessmentDetailPage />} />
                     <Route path="findings" element={<FindingsPage />} />
                     <Route path="targets" element={<TargetInventoryPage />} />
-                    <Route path="tasks" element={<PlaceholderPage title="Tasks" />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Route>
 

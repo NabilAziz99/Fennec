@@ -3,7 +3,6 @@ import {
     LayoutDashboard,
     Activity,
     ShieldAlert,
-    ListTodo,
     Globe,
     Plus,
 } from 'lucide-react';
@@ -29,7 +28,6 @@ const navMain = [
     { title: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { title: 'Status', href: '/dashboard/status', icon: Activity },
     { title: 'Findings', href: '/dashboard/findings', icon: ShieldAlert },
-    { title: 'Tasks', href: '/dashboard/tasks', icon: ListTodo },
     { title: 'Target Inventory', href: '/dashboard/targets', icon: Globe },
 ];
 
